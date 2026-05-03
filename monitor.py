@@ -122,21 +122,34 @@ def send_email(subject, body):
     if not SENDER_AUTH_CODE:
         print("[WARN] SMTP_AUTH_CODE not set, skipping email")
         return False
-    try:
-        msg = MIMEText(body, "plain", "utf-8")
-        msg["From"] = SENDER_EMAIL
-        msg["To"] = RECEIVER_EMAIL
-        msg["Subject"] = subject
 
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=30)
-        server.login(SENDER_EMAIL, SENDER_AUTH_CODE)
-        server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
-        server.quit()
-        print("[OK] Email sent")
-        return True
-    except Exception as e:
-        print(f"[ERROR] Email failed: {e}")
-        return False
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = subject
+
+    attempts = [
+        (smtplib.SMTP_SSL, SMTP_PORT),
+        (smtplib.SMTP, 587),
+    ]
+
+    for factory, port in attempts:
+        try:
+            print(f"[DEBUG] Trying SMTP {SMTP_SERVER}:{port} ...")
+            server = factory(SMTP_SERVER, port, timeout=30)
+            if port == 587:
+                server.starttls()
+            server.login(SENDER_EMAIL, SENDER_AUTH_CODE)
+            server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
+            server.quit()
+            print(f"[OK] Email sent via port {port}")
+            return True
+        except Exception as e:
+            print(f"[WARN] Port {port} failed: {e}")
+            continue
+
+    print("[ERROR] All SMTP attempts failed")
+    return False
 
 
 def main():
