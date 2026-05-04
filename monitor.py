@@ -11,7 +11,9 @@ import re
 import json
 import os
 import smtplib
+import ssl
 from email.mime.text import MIMEText
+from email.header import Header
 from datetime import datetime
 import time
 
@@ -119,6 +121,9 @@ def save_data(data):
 
 
 def send_email(subject, body):
+    auth_len = len(SENDER_AUTH_CODE) if SENDER_AUTH_CODE else 0
+    print(f"[DEBUG] SMTP_AUTH_CODE present: {bool(SENDER_AUTH_CODE)}, length={auth_len}")
+
     if not SENDER_AUTH_CODE:
         print("[WARN] SMTP_AUTH_CODE not set, skipping email")
         return False
@@ -126,30 +131,34 @@ def send_email(subject, body):
     msg = MIMEText(body, "plain", "utf-8")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = subject
+    msg["Subject"] = Header(subject, "utf-8")
 
-    attempts = [
-        (smtplib.SMTP_SSL, SMTP_PORT),
-        (smtplib.SMTP, 587),
+    methods = [
+        ("SMTP_SSL:465", lambda: smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=30)),
+        ("SMTP+STARTTLS:587", lambda: _smtp_starttls()),
     ]
 
-    for factory, port in attempts:
+    for label, factory in methods:
         try:
-            print(f"[DEBUG] Trying SMTP {SMTP_SERVER}:{port} ...")
-            server = factory(SMTP_SERVER, port, timeout=30)
-            if port == 587:
-                server.starttls()
+            print(f"[DEBUG] Trying {label} ...")
+            server = factory()
             server.login(SENDER_EMAIL, SENDER_AUTH_CODE)
             server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
             server.quit()
-            print(f"[OK] Email sent via port {port}")
+            print(f"[OK] Email sent via {label}")
             return True
         except Exception as e:
-            print(f"[WARN] Port {port} failed: {e}")
-            continue
+            print(f"[WARN] {label} failed: {e}")
 
-    print("[ERROR] All SMTP attempts failed")
+    print("[ERROR] All SMTP methods failed")
     return False
+
+
+def _smtp_starttls():
+    server = smtplib.SMTP(SMTP_SERVER, 587, timeout=30)
+    context = ssl.create_default_context()
+    server.starttls(context=context)
+    return server
 
 
 def main():
