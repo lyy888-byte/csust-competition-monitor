@@ -10,10 +10,6 @@ from bs4 import BeautifulSoup
 import re
 import json
 import os
-import smtplib
-import ssl
-from email.mime.text import MIMEText
-from email.header import Header
 from datetime import datetime
 import time
 
@@ -21,10 +17,7 @@ LIST_URL = "https://www.csust.edu.cn/jwc/cxjy_/xkjs.htm"
 BASE_URL = "https://www.csust.edu.cn/jwc"
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
 
-SMTP_SERVER = "smtp.qq.com"
-SMTP_PORT = 465
-SENDER_EMAIL = "1485409289@qq.com"
-SENDER_AUTH_CODE = os.environ.get("SMTP_AUTH_CODE", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 RECEIVER_EMAIL = "1485409289@qq.com"
 
 HEADERS = {
@@ -121,44 +114,35 @@ def save_data(data):
 
 
 def send_email(subject, body):
-    auth_len = len(SENDER_AUTH_CODE) if SENDER_AUTH_CODE else 0
-    print(f"[DEBUG] SMTP_AUTH_CODE present: {bool(SENDER_AUTH_CODE)}, length={auth_len}")
-
-    if not SENDER_AUTH_CODE:
-        print("[WARN] SMTP_AUTH_CODE not set, skipping email")
+    if not RESEND_API_KEY:
+        print("[WARN] RESEND_API_KEY not set, skipping email")
         return False
 
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["From"] = SENDER_EMAIL
-    msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = Header(subject, "utf-8")
-
-    methods = [
-        ("SMTP_SSL:465", lambda: smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=30)),
-        ("SMTP+STARTTLS:587", lambda: _smtp_starttls()),
-    ]
-
-    for label, factory in methods:
-        try:
-            print(f"[DEBUG] Trying {label} ...")
-            server = factory()
-            server.login(SENDER_EMAIL, SENDER_AUTH_CODE)
-            server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
-            server.quit()
-            print(f"[OK] Email sent via {label}")
+    try:
+        print("[DEBUG] Sending via Resend API ...")
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": "学科竞赛监控 <onboarding@resend.dev>",
+                "to": [RECEIVER_EMAIL],
+                "subject": subject,
+                "text": body,
+            },
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            print(f"[OK] Email sent via Resend, id={resp.json().get('id', '?')}")
             return True
-        except Exception as e:
-            print(f"[WARN] {label} failed: {e}")
-
-    print("[ERROR] All SMTP methods failed")
-    return False
-
-
-def _smtp_starttls():
-    server = smtplib.SMTP(SMTP_SERVER, 587, timeout=30)
-    context = ssl.create_default_context()
-    server.starttls(context=context)
-    return server
+        else:
+            print(f"[ERROR] Resend failed: {resp.status_code} {resp.text[:300]}")
+            return False
+    except Exception as e:
+        print(f"[ERROR] Email failed: {e}")
+        return False
 
 
 def main():
