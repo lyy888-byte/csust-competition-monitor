@@ -182,20 +182,26 @@ def main():
 
     today = datetime.now().strftime("%Y-%m-%d")
 
+    for item in items:
+        if item["id"] and item["id"] not in stored_data:
+            stored_data[item["id"]] = {
+                "title": item["title"],
+                "date": item["date"],
+                "url": item["url"],
+                "qq_groups": [],
+            }
+
+    last_sent = stored_data.get("_last_no_update_sent", "")
+    should_send_no_update = (last_sent != today)
+
     if not new_items:
         print("[INFO] No new entries")
-        send_email(
-            f"学科竞赛监控 - {today}",
-            f"【{today}】长沙理工大学教务处学科竞赛页面没有新发布的竞赛通知。\n\n监测地址：{LIST_URL}"
-        )
-        for item in items:
-            if item["id"] and item["id"] not in stored_data:
-                stored_data[item["id"]] = {
-                    "title": item["title"],
-                    "date": item["date"],
-                    "url": item["url"],
-                    "qq_groups": [],
-                }
+        if should_send_no_update:
+            send_email(
+                f"学科竞赛监控 - {today}",
+                f"【{today}】长沙理工大学教务处学科竞赛页面没有新发布的竞赛通知。\n\n监测地址：{LIST_URL}"
+            )
+            stored_data["_last_no_update_sent"] = today
         save_data(stored_data)
         return
 
