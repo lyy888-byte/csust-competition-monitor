@@ -23,7 +23,7 @@ jobs:
 
       - name: Run monitor
         env:
-          SMTP_AUTH_CODE: ${{ secrets.SMTP_AUTH_CODE }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: python monitor.py
 
       - name: Commit data
